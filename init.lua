@@ -325,6 +325,7 @@ require('lazy').setup({
         { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
+        { '<leader>g', group = '[G]it diff (diffview)', mode = { 'n', 'v' } }, -- custom.plugins.diffview
         { 'gr', group = 'LSP Actions', mode = { 'n' } },
       },
     },
@@ -701,6 +702,19 @@ require('lazy').setup({
     opts = {
       notify_on_error = false,
       format_on_save = function(bufnr)
+        -- Repos that manage their own formatting -- don't reformat their files
+        -- just because I saved one. <leader>f still formats on demand here.
+        local skip_roots = {
+          '~/github/splat',
+        }
+        local path = vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))
+        for _, root in ipairs(skip_roots) do
+          root = vim.fs.normalize(root)
+          if path == root or vim.startswith(path, root .. '/') then
+            return nil
+          end
+        end
+
         -- Disable "format_on_save lsp_fallback" for languages that don't
         -- have a well standardized coding style. You can add additional
         -- languages here or re-enable it for the disabled ones.
