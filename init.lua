@@ -218,6 +218,28 @@ vim.keymap.set('n', '<C-l>', '<C-w><C-l>', { desc = 'Move focus to the right win
 vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
 
+-- [[ Buffer keymaps ]]
+--  <leader>b was kickstart's toggle-breakpoint. Breakpoints now live on <F9>
+--  (see kickstart/plugins/debug.lua); the whole <leader>b chain is buffers.
+--
+--  Deletes go through mini.bufremove (part of mini.nvim, already installed) so
+--  the window layout survives -- plain :bdelete closes the split along with the
+--  buffer. See the mini.nvim config block below for the setup call.
+vim.keymap.set('n', '<leader>bb', function() require('telescope.builtin').buffers() end, { desc = '[B]uffer list' })
+vim.keymap.set('n', '<leader>bd', function() require('mini.bufremove').delete(0, false) end, { desc = '[B]uffer [D]elete' })
+vim.keymap.set('n', '<leader>bD', function() require('mini.bufremove').delete(0, true) end, { desc = '[B]uffer [D]elete (force)' })
+vim.keymap.set('n', '<leader>bo', function()
+  local current = vim.api.nvim_get_current_buf()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    -- Skip the current buffer and anything unlisted (help, terminals, neo-tree).
+    if buf ~= current and vim.bo[buf].buflisted then require('mini.bufremove').delete(buf, false) end
+  end
+end, { desc = '[B]uffer delete [O]thers' })
+vim.keymap.set('n', '<leader>bn', '<cmd>bnext<CR>', { desc = '[B]uffer [N]ext' })
+vim.keymap.set('n', '<leader>bp', '<cmd>bprevious<CR>', { desc = '[B]uffer [P]revious' })
+vim.keymap.set('n', '<leader>bl', '<C-^>', { desc = '[B]uffer [L]ast (alternate)' })
+vim.keymap.set('n', '<leader>br', '<cmd>edit!<CR>', { desc = '[B]uffer [R]eload from disk' })
+
 -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
 -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
@@ -323,6 +345,7 @@ require('lazy').setup({
       -- Document existing key chains
       spec = {
         { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
+        { '<leader>b', group = '[B]uffer' },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
         { '<leader>g', group = '[G]it diff (diffview)', mode = { 'n', 'v' } }, -- custom.plugins.diffview
@@ -882,6 +905,10 @@ require('lazy').setup({
       -- - sd'   - [S]urround [D]elete [']quotes
       -- - sr)'  - [S]urround [R]eplace [)] [']
       require('mini.surround').setup()
+
+      -- Delete buffers without destroying the window layout. Drives the
+      -- <leader>bd / <leader>bD / <leader>bo keymaps near the top of this file.
+      require('mini.bufremove').setup()
 
       -- Simple and easy statusline.
       --  You could remove this setup call if you don't like it,
