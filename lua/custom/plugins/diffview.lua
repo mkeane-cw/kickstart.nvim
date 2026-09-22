@@ -38,7 +38,8 @@ end
 
 -- Small-screen "solo" mode: hide the file panel and collapse the old version so
 -- the new version gets the whole window. Toggled with <leader>z from inside a
--- diff; toggling again restores the panel and the side-by-side split.
+-- diff; toggling again restores the panel and the side-by-side split. The new
+-- version is zoomed regardless of which pane the cursor started in.
 local function panel_win()
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
@@ -57,6 +58,35 @@ local function restore_winminwidth()
   end
 end
 
+-- The window holding the new version. Diffview calls this the layout's "main"
+-- window, and every layout -- Diff1 through the 3-way merge layouts -- reports
+-- its `b` side for it, which is the rhs/working-tree file.
+local function main_diff_win()
+  local ok, lib = pcall(require, 'diffview.lib')
+  if not ok then
+    return nil
+  end
+  local view = lib.get_current_view()
+  local layout = view and view.cur_layout
+  if not layout then
+    return nil
+  end
+  local win = layout:get_main_win()
+  if win and win.id and vim.api.nvim_win_is_valid(win.id) then
+    return win.id
+  end
+end
+
+-- Always zoom the new version, whichever pane the cursor happens to be in.
+-- Falls back to zooming the current window if the layout can't be resolved.
+local function zoom_new_version()
+  local win = main_diff_win()
+  if win then
+    vim.api.nvim_set_current_win(win)
+  end
+  vim.cmd 'wincmd |'
+end
+
 local function toggle_solo()
   if vim.t.dv_solo then
     vim.t.dv_solo = false
@@ -72,7 +102,7 @@ local function toggle_solo()
     if panel_win() then
       vim.cmd 'DiffviewToggleFiles'
     end
-    vim.cmd 'wincmd |'
+    zoom_new_version()
   end
 end
 
@@ -106,7 +136,7 @@ return {
       pattern = 'DiffviewDiffBufWinEnter',
       callback = function()
         if vim.t.dv_solo then
-          vim.cmd 'wincmd |'
+          zoom_new_version()
         end
       end,
     })
