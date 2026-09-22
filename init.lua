@@ -412,6 +412,9 @@ require('lazy').setup({
       -- Telescope picker. This is really useful to discover what Telescope can
       -- do as well as how to actually do it!
 
+      -- Forward declaration; assigned further down, once `builtin` is in scope.
+      local set_live_grep_glob
+
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
       require('telescope').setup {
@@ -423,7 +426,14 @@ require('lazy').setup({
         --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
         --   },
         -- },
-        -- pickers = {}
+        pickers = {
+          live_grep = {
+            mappings = {
+              i = { ['<C-g>'] = function(prompt_bufnr) set_live_grep_glob(prompt_bufnr) end },
+              n = { ['<C-g>'] = function(prompt_bufnr) set_live_grep_glob(prompt_bufnr) end },
+            },
+          },
+        },
         extensions = {
           ['ui-select'] = { require('telescope.themes').get_dropdown() },
         },
@@ -433,14 +443,59 @@ require('lazy').setup({
       pcall(require('telescope').load_extension, 'fzf')
       pcall(require('telescope').load_extension, 'ui-select')
 
+      -- Show a line-number column in Telescope preview windows (e.g. the grd/grr
+      -- results list). Fires each time a preview buffer is loaded.
+      vim.api.nvim_create_autocmd('User', {
+        pattern = 'TelescopePreviewerLoaded',
+        callback = function()
+          vim.wo.number = true
+        end,
+      })
+
       -- See `:help telescope.builtin`
       local builtin = require 'telescope.builtin'
+
+      -- Live Grep, optionally restricted to files matching an rg glob (e.g. `*.j2`).
+      -- The active glob lives here so that re-opening the picker from <C-g> can
+      -- keep both the glob and whatever query was already typed.
+      local live_grep_glob = nil
+      local live_grep_opts = {}
+
+      local function open_live_grep(base_opts, default_text)
+        live_grep_opts = base_opts or {}
+        local title = live_grep_opts.prompt_title or 'Live Grep'
+        builtin.live_grep(vim.tbl_extend('force', live_grep_opts, {
+          default_text = default_text,
+          glob_pattern = live_grep_glob,
+          prompt_title = live_grep_glob and string.format('%s (%s)', title, live_grep_glob) or title,
+        }))
+      end
+
+      -- <C-g> from inside Live Grep: set, change, or clear the glob filter.
+      -- Telescope can't change rg's args on a live picker, so close and re-open
+      -- it with the current prompt carried over as default_text.
+      set_live_grep_glob = function(prompt_bufnr)
+        local query = require('telescope.actions.state').get_current_line()
+        require('telescope.actions').close(prompt_bufnr)
+
+        vim.schedule(function()
+          vim.ui.input({ prompt = 'Glob (empty for all files): ', default = live_grep_glob or '' }, function(input)
+            if input ~= nil then
+              live_grep_glob = input ~= '' and input or nil
+            end
+            vim.schedule(function() open_live_grep(live_grep_opts, query) end)
+          end)
+        end)
+      end
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
       vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
       vim.keymap.set({ 'n', 'v' }, '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
+      vim.keymap.set('n', '<leader>sg', function()
+        live_grep_glob = nil
+        open_live_grep()
+      end, { desc = '[S]earch by [G]rep (<C-g> to filter by glob)' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
@@ -496,7 +551,8 @@ require('lazy').setup({
         'n',
         '<leader>s/',
         function()
-          builtin.live_grep {
+          live_grep_glob = nil
+          open_live_grep {
             grep_open_files = true,
             prompt_title = 'Live Grep in Open Files',
           }
@@ -630,7 +686,9 @@ require('lazy').setup({
       --  See `:help lsp-config` for information about keys and how to configure
       ---@type table<string, vim.lsp.Config>
       local servers = {
-        -- clangd = {},
+        -- C/C++: clangd for navigation in FRR and other C repos. Reads a
+        -- compile_commands.json or .clangd at the project root for flags.
+        clangd = {},
         -- gopls = {},
         -- rust_analyzer = {},
         -- Python: basedpyright for navigation (go-to-def, find-references, hover),

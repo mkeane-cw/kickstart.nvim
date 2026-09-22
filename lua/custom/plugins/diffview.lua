@@ -36,6 +36,46 @@ local function diff_branch()
   vim.cmd('DiffviewOpen ' .. base .. '...HEAD')
 end
 
+-- Small-screen "solo" mode: hide the file panel and collapse the old version so
+-- the new version gets the whole window. Toggled with <leader>z from inside a
+-- diff; toggling again restores the panel and the side-by-side split.
+local function panel_win()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+    if ft == 'DiffviewFiles' or ft == 'DiffviewFileHistory' then
+      return win
+    end
+  end
+end
+
+-- winminwidth has to drop to 0 or the collapsed pane keeps a 1-column sliver.
+-- It's a global option, so stash the real value and put it back on the way out.
+local function restore_winminwidth()
+  if vim.g.dv_winminwidth ~= nil then
+    vim.o.winminwidth = vim.g.dv_winminwidth
+    vim.g.dv_winminwidth = nil
+  end
+end
+
+local function toggle_solo()
+  if vim.t.dv_solo then
+    vim.t.dv_solo = false
+    restore_winminwidth()
+    if not panel_win() then
+      vim.cmd 'DiffviewToggleFiles'
+    end
+    vim.cmd 'wincmd ='
+  else
+    vim.t.dv_solo = true
+    vim.g.dv_winminwidth = vim.o.winminwidth
+    vim.o.winminwidth = 0
+    if panel_win() then
+      vim.cmd 'DiffviewToggleFiles'
+    end
+    vim.cmd 'wincmd |'
+  end
+end
+
 ---@module 'lazy'
 ---@type LazySpec
 return {
@@ -58,6 +98,24 @@ return {
     { '<leader>gh', ":'<,'>DiffviewFileHistory<cr>", mode = 'v', desc = 'Git [h]istory of selection' },
   },
 
+  init = function()
+    -- Diffview rebuilds its window layout as you move between files, which would
+    -- undo the zoom -- re-apply it while solo mode is on, and make sure the
+    -- global winminwidth gets restored if the view is closed while soloed.
+    vim.api.nvim_create_autocmd('User', {
+      pattern = 'DiffviewDiffBufWinEnter',
+      callback = function()
+        if vim.t.dv_solo then
+          vim.cmd 'wincmd |'
+        end
+      end,
+    })
+    vim.api.nvim_create_autocmd('User', {
+      pattern = 'DiffviewViewClosed',
+      callback = restore_winminwidth,
+    })
+  end,
+
   ---@module 'diffview'
   opts = {
     enhanced_diff_hl = true, -- better add/change highlighting than the plain diff colors
@@ -69,7 +127,12 @@ return {
     },
     file_panel = {
       listing_style = 'tree',
-      win_config = { width = 32 },
+      win_config = { width = 26 }, -- narrow: this is a laptop-sized screen
+    },
+    keymaps = {
+      view = {
+        { 'n', '<leader>z', toggle_solo, { desc = 'Diffview: solo the current version' } },
+      },
     },
   },
 }
