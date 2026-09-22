@@ -19,6 +19,12 @@ return {
   ---@type neotree.Config
   opts = {
     filesystem = {
+      -- Watch the filesystem at the OS level instead of relying on nvim
+      -- autocmds. Without this (the default), files and directories created
+      -- outside nvim -- a git checkout, a branch switch, a script or agent
+      -- writing a new folder -- do not appear until the tree is refreshed by
+      -- hand with `R`.
+      use_libuv_file_watcher = true,
       window = {
         mappings = {
           ['\\'] = 'close_window',
